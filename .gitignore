@@ -5,6 +5,10 @@ coverage
 .tmp
 _automation.log
 automation_state.log
+automation_run.log
+push_run.log
+vitest.config.js
+vitest.config.js.map
 .env
 .env.*
 !.env.example
