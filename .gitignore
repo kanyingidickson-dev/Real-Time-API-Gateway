@@ -1,0 +1,11 @@
+node_modules
+.dist
+/dist
+coverage
+.tmp
+_automation.log
+automation_state.log
+.env
+.env.*
+!.env.example
+.DS_Store
