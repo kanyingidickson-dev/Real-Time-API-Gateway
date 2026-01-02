@@ -18,7 +18,7 @@
   "dependencies": {
     "@fastify/sensible": "^6.0.0",
     "@fastify/under-pressure": "^9.0.0",
-    "@fastify/jwt": "^8.0.0",
+    "@fastify/jwt": "^9.0.0",
     "@fastify/rate-limit": "^10.0.0",
     "@fastify/websocket": "^11.0.0",
     "dotenv": "^16.0.0",
