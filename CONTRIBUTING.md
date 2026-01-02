@@ -35,4 +35,4 @@ npm run build
 
 ## Security issues
 
-Please do not open public issues for vulnerabilities. See `SECURITY.md`.
+Please do not open public issues for vulnerabilities. See **[SECURITY.md](https://github.com/kanyingidickson-dev/Real-Time-API-Gateway/blob/main/SECURITY.md)**.
