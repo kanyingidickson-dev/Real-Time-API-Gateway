@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { applyResponseHeaders, filterRequestHeaders } from './headers.js';
@@ -123,14 +124,13 @@ export async function proxyHttp(
       return { statusCode: 502 };
     }
 
-    reply.code(upstreamRes.status);
-    applyResponseHeaders(reply, upstreamRes.headers);
-
     const contentType = upstreamRes.headers.get('content-type') ?? 'application/octet-stream';
     const cacheControl = upstreamRes.headers.get('cache-control') ?? '';
     const isEventStream = contentType.includes('text/event-stream');
 
     if (!upstreamRes.body || method === 'HEAD') {
+      reply.code(upstreamRes.status);
+      applyResponseHeaders(reply, upstreamRes.headers);
       reply.send();
       return { statusCode: upstreamRes.status };
     }
@@ -150,6 +150,8 @@ export async function proxyHttp(
 
     if (canBufferForCache) {
       const buf = Buffer.from(await upstreamRes.arrayBuffer());
+      reply.code(upstreamRes.status);
+      applyResponseHeaders(reply, upstreamRes.headers);
       reply.send(buf);
       return {
         statusCode: upstreamRes.status,
@@ -162,7 +164,19 @@ export async function proxyHttp(
       };
     }
 
-    reply.send(Readable.fromWeb(upstreamRes.body as unknown as NodeReadableStream<Uint8Array>));
+    reply.hijack();
+    reply.raw.statusCode = upstreamRes.status;
+    applyResponseHeaders(
+      { header: (key, value) => reply.raw.setHeader(key, value) },
+      upstreamRes.headers
+    );
+    const stream = Readable.fromWeb(upstreamRes.body as unknown as NodeReadableStream<Uint8Array>);
+    try {
+      await pipeline(stream, reply.raw);
+    } catch (err) {
+      req.log.warn({ err }, 'upstream response stream failed');
+    }
+
     return { statusCode: upstreamRes.status };
   } finally {
     clearTimeout(timeout);
