@@ -9,6 +9,12 @@ automation_run.log
 push_run.log
 vitest.config.js
 vitest.config.js.map
+.status_snapshot.txt
+git_sync.log
+pull_rebase.log
+rebase_debug.log
+rebase_finish.log
+rebase_step.log
 .env
 .env.*
 !.env.example

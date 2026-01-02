@@ -1,0 +1,6 @@
++ git status -sb
+## main...origin/main [behind 1]
+ M .gitignore
+ D Readme.md
+?? .sync_step1_commit.log
++ git add -A
