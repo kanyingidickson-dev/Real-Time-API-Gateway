@@ -10,6 +10,8 @@ push_run.log
 vitest.config.js
 vitest.config.js.map
 .status_snapshot.txt
+.sync_step*.log
+.sync_*.log
 git_sync.log
 pull_rebase.log
 rebase_debug.log
