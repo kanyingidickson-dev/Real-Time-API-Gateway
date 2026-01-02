@@ -62,8 +62,45 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
         }
       }, app.config.websocket.pingIntervalMs);
 
-      socket.on('message', (data: WebSocket.RawData) => {
+      const sizeOf = (data: WebSocket.RawData): number => {
+        if (typeof data === 'string') return Buffer.byteLength(data);
+        if (Buffer.isBuffer(data)) return data.length;
+        if (data instanceof ArrayBuffer) return data.byteLength;
+        if (Array.isArray(data)) return data.reduce((acc, part) => acc + part.length, 0);
+        return 0;
+      };
+
+      const pending: WebSocket.RawData[] = [];
+      let pendingBytes = 0;
+
+      const flushPending = () => {
         if (upstream.readyState !== WebSocket.OPEN) return;
+
+        while (pending.length > 0) {
+          if (upstream.bufferedAmount > app.config.websocket.maxBufferedBytes) {
+            closeBoth(1013, 'backpressure');
+            return;
+          }
+
+          const msg = pending.shift();
+          if (!msg) break;
+          pendingBytes -= sizeOf(msg);
+          upstream.send(msg);
+        }
+      };
+
+      socket.on('message', (data: WebSocket.RawData) => {
+        if (upstream.readyState !== WebSocket.OPEN) {
+          const nextBytes = pendingBytes + sizeOf(data);
+          if (nextBytes > app.config.websocket.maxBufferedBytes) {
+            closeBoth(1013, 'backpressure');
+            return;
+          }
+
+          pending.push(data);
+          pendingBytes = nextBytes;
+          return;
+        }
 
         if (upstream.bufferedAmount > app.config.websocket.maxBufferedBytes) {
           closeBoth(1013, 'backpressure');
@@ -72,6 +109,8 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
 
         upstream.send(data);
       });
+
+      upstream.on('open', flushPending);
 
       upstream.on('message', (data: WebSocket.RawData) => {
         if (socket.readyState !== WebSocket.OPEN) return;
