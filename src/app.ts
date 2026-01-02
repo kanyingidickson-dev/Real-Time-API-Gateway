@@ -19,6 +19,9 @@ export function buildApp(config: Config) {
 
   app.decorate('config', config);
 
+  // Accept any content-type without parsing (proxy raw bytes)
+  app.addContentTypeParser('*', { parseAs: 'buffer' }, (req, body, done) => done(null, body));
+
   app.register(sensible);
 
   app.register(underPressure, {
