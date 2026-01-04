@@ -71,6 +71,8 @@ UPSTREAMS={"users":["http://localhost:3001"],"billing":["http://localhost:3002",
 - `GET /healthz`
 - `GET /readyz`
 - `GET /metrics`
+- `GET /admin` (minimal live dashboard)
+- `GET /admin/stats` (dashboard data)
 - `GET /_pressure` (exposed by `@fastify/under-pressure`)
 
 ## Testing

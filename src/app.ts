@@ -1,11 +1,14 @@
 import Fastify from 'fastify';
+import { randomUUID } from 'node:crypto';
 import sensible from '@fastify/sensible';
 import underPressure from '@fastify/under-pressure';
 import type { Config } from './config/index.js';
 import authPlugin from './plugins/auth.js';
 import metricsPlugin from './plugins/metrics.js';
 import rateLimitPlugin from './plugins/rateLimit.js';
+import gatewayStatePlugin from './plugins/gatewayState.js';
 import healthRoutes from './routes/health.js';
+import adminRoutes from './routes/admin.js';
 import proxyRoutes from './routes/proxy.js';
 import wsRoutes from './routes/ws.js';
 import sseRoutes from './routes/sse.js';
@@ -14,6 +17,14 @@ export function buildApp(config: Config) {
   const app = Fastify({
     logger: {
       level: config.logLevel
+    },
+    genReqId: (req) => {
+      const incoming = req.headers['x-request-id'];
+      const requestId = Array.isArray(incoming) ? incoming[0] : incoming;
+      if (typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128) {
+        return requestId;
+      }
+      return randomUUID();
     }
   });
 
@@ -21,6 +32,12 @@ export function buildApp(config: Config) {
 
   // Accept any content-type without parsing (proxy raw bytes)
   app.addContentTypeParser('*', { parseAs: 'buffer' }, (req, body, done) => done(null, body));
+
+  app.addHook('onRequest', async (req, reply) => {
+    if (typeof req.id === 'string') {
+      reply.header('x-request-id', req.id);
+    }
+  });
 
   app.register(sensible);
 
@@ -41,8 +58,10 @@ export function buildApp(config: Config) {
   app.register(metricsPlugin);
   app.register(rateLimitPlugin);
   app.register(authPlugin);
+  app.register(gatewayStatePlugin);
 
   app.register(healthRoutes);
+  app.register(adminRoutes);
   app.register(proxyRoutes);
   app.register(wsRoutes);
   app.register(sseRoutes);

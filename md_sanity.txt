@@ -1,0 +1,28 @@
+== changed files ==
+M	CODE_OF_CONDUCT.md
+M	CONTRIBUTING.md
+M	README.md
+M	SECURITY.md
+
+== README endpoint strings check ==
+1:# Real-Time API Gateway
+5:## Requirements
+10:## Quickstart
+18:## Configuration
+24:### `UPSTREAMS`
+34:### Authentication
+39:## Endpoints
+41:### Proxy routes
+43:- `ANY /api/:service/*`
+45:- `GET|HEAD /sse/:service/*`
+48:### WebSocket bridge
+50:- `GET /ws/:service?path=/some/ws/path` (WebSocket upgrade)
+54:### Operational endpoints
+56:- `GET /healthz`
+57:- `GET /readyz`
+58:- `GET /metrics`
+59:- `GET /_pressure` (exposed by `@fastify/under-pressure`)
+61:## Testing
+67:### Docker
+
+== package scripts ==

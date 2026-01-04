@@ -1,12 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import websocket from '@fastify/websocket';
 import WebSocket from 'ws';
-import { createUpstreamSelector } from '../lib/upstreams.js';
 
 const wsRoutes: FastifyPluginAsync = async (app) => {
   await app.register(websocket);
-
-  const upstreams = createUpstreamSelector(app.config.upstreams);
 
   app.get(
     '/ws/:service',
@@ -17,12 +14,14 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
       app.metrics.websocketConnections.inc();
 
       const service = (req.params as { service: string }).service;
-      const base = upstreams.pick(service);
+      const base = app.gatewayState.pick(service);
       if (!base) {
         socket.close(1008, 'unknown_service');
         app.metrics.websocketConnections.dec();
         return;
       }
+
+      const wsCtx = app.gatewayState.beginWebSocket(service, base);
 
       const incoming = new URL(req.raw.url ?? '', 'http://localhost');
       const path = incoming.searchParams.get('path') ?? '/';
@@ -33,7 +32,8 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
 
       const upstream = new WebSocket(target.toString(), {
         headers: {
-          ...(typeof req.headers.authorization === 'string' ? { authorization: req.headers.authorization } : {})
+          ...(typeof req.headers.authorization === 'string' ? { authorization: req.headers.authorization } : {}),
+          ...(typeof req.id === 'string' ? { 'x-request-id': req.id } : {})
         }
       });
 
@@ -129,6 +129,7 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
         cleanedUp = true;
         clearInterval(pingInterval);
         app.metrics.websocketConnections.dec();
+        wsCtx.close();
       };
 
       upstream.on('close', () => {
@@ -136,7 +137,12 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
         closeBoth(1000, 'upstream_closed');
       });
 
+      upstream.on('open', () => {
+        wsCtx.markUpstreamOpen();
+      });
+
       upstream.on('error', () => {
+        wsCtx.markUpstreamError();
         cleanup();
         closeBoth(1011, 'upstream_error');
       });

@@ -1,10 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { createResponseCache } from '../lib/cache.js';
 import { proxyHttp } from '../lib/httpProxy.js';
-import { createUpstreamSelector } from '../lib/upstreams.js';
 
 const proxyRoutes: FastifyPluginAsync = async (app) => {
-  const upstreams = createUpstreamSelector(app.config.upstreams);
   const cache = app.config.cache.enabled ? createResponseCache() : null;
 
   const preHandler = app.config.authRequired
@@ -19,7 +17,7 @@ const proxyRoutes: FastifyPluginAsync = async (app) => {
       const service = (req.params as { service: string }).service;
       const wildcard = (req.params as { '*': string | undefined })['*'] ?? '';
 
-      const base = upstreams.pick(service);
+      const base = app.gatewayState.pick(service);
       if (!base) {
         reply.code(404);
         return { error: 'unknown_service', message: `No upstream configured for service: ${service}` };
@@ -45,6 +43,7 @@ const proxyRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      const requestCtx = app.gatewayState.beginHttp(service, base);
       const result = await proxyHttp(
         req,
         reply,
@@ -52,6 +51,7 @@ const proxyRoutes: FastifyPluginAsync = async (app) => {
         app.config.httpProxyTimeoutMs,
         cache ? app.config.cache.maxBodyBytes : undefined
       );
+      requestCtx.finish(result.statusCode, result.upstreamMs);
 
       if (cache && cacheKey && result.cached && result.statusCode >= 200 && result.statusCode < 300) {
         cache.set(cacheKey, {

@@ -6,6 +6,7 @@ import { applyResponseHeaders, filterRequestHeaders } from './headers.js';
 
 export type ProxyResult = {
   statusCode: number;
+  upstreamMs?: number;
   cached?: {
     headers: Record<string, string | string[]>;
     body: Buffer;
@@ -69,6 +70,8 @@ export async function proxyHttp(
 ): Promise<ProxyResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const requestStart = process.hrtime.bigint();
+  let upstreamMs: number | undefined;
 
   try {
     const headers = appendForwardedHeaders(
@@ -111,17 +114,19 @@ export async function proxyHttp(
       }
 
       upstreamRes = await fetch(targetUrl, init);
+      upstreamMs = Number(process.hrtime.bigint() - requestStart) / 1e6;
     } catch (err) {
+      upstreamMs = Number(process.hrtime.bigint() - requestStart) / 1e6;
       if (controller.signal.aborted) {
         reply.code(504);
         reply.send({ error: 'upstream_timeout', message: 'Upstream request timed out' });
-        return { statusCode: 504 };
+        return { statusCode: 504, upstreamMs };
       }
 
       reply.code(502);
       reply.send({ error: 'upstream_unavailable', message: 'Failed to reach upstream' });
       req.log.warn({ err }, 'upstream request failed');
-      return { statusCode: 502 };
+      return { statusCode: 502, upstreamMs };
     }
 
     const contentType = upstreamRes.headers.get('content-type') ?? 'application/octet-stream';
@@ -131,8 +136,9 @@ export async function proxyHttp(
     if (!upstreamRes.body || method === 'HEAD') {
       reply.code(upstreamRes.status);
       applyResponseHeaders(reply, upstreamRes.headers);
+      if (typeof req.id === 'string') reply.header('x-request-id', req.id);
       reply.send();
-      return { statusCode: upstreamRes.status };
+      return { statusCode: upstreamRes.status, upstreamMs };
     }
 
     const lengthHeader = upstreamRes.headers.get('content-length');
@@ -152,9 +158,11 @@ export async function proxyHttp(
       const buf = Buffer.from(await upstreamRes.arrayBuffer());
       reply.code(upstreamRes.status);
       applyResponseHeaders(reply, upstreamRes.headers);
+      if (typeof req.id === 'string') reply.header('x-request-id', req.id);
       reply.send(buf);
       return {
         statusCode: upstreamRes.status,
+        upstreamMs,
         cached: {
           headers: {
             'content-type': contentType
@@ -170,6 +178,7 @@ export async function proxyHttp(
       { header: (key, value) => reply.raw.setHeader(key, value) },
       upstreamRes.headers
     );
+    if (typeof req.id === 'string') reply.raw.setHeader('x-request-id', req.id);
     const stream = Readable.fromWeb(upstreamRes.body as unknown as NodeReadableStream<Uint8Array>);
     try {
       await pipeline(stream, reply.raw);
@@ -177,7 +186,7 @@ export async function proxyHttp(
       req.log.warn({ err }, 'upstream response stream failed');
     }
 
-    return { statusCode: upstreamRes.status };
+    return { statusCode: upstreamRes.status, upstreamMs };
   } finally {
     clearTimeout(timeout);
   }
