@@ -1,3 +1,11 @@
+/**
+ * Gateway runtime state.
+ *
+ * Tracks per-upstream stats (latency, req/s, error rate, inflight connections) and provides a
+ * routing decision function that is circuit-breaker aware.
+ *
+ * Note: this is intentionally in-memory and event-loop-local (no locks) to keep it lightweight.
+ */
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
 
@@ -94,6 +102,9 @@ const failureThreshold = 5;
 const failureWindowMs = 10_000;
 const circuitOpenMs = 15_000;
 const latencyAlpha = 0.2;
+
+// Scoring tradeoff: we heavily penalize inflight connections (long-lived SSE/WS matter), and then
+// use latency as a tie-breaker / secondary signal.
 
 function updateLatency(upstream: UpstreamRuntime, latencyMs: number): void {
   upstream.lastLatencyMs = latencyMs;
@@ -194,6 +205,8 @@ const gatewayStatePlugin: FastifyPluginAsync = async (app) => {
     if (elapsedMs <= 0) return;
 
     const delta = u.requestsTotal - u.lastRpsSampleRequestsTotal;
+    // This is a lightweight moving sample (not a perfect sliding window). It's good enough for a
+    // dashboard and avoids allocations/timers per upstream.
     u.rps = (delta * 1000) / elapsedMs;
     u.lastRpsSampleAtMs = nowMs;
     u.lastRpsSampleRequestsTotal = u.requestsTotal;
@@ -225,6 +238,8 @@ const gatewayStatePlugin: FastifyPluginAsync = async (app) => {
         }
 
         const failed = statusCode >= 500;
+        // We treat 5xx as upstream failures for breaker purposes. 4xx are usually caller errors
+        // and should not penalize the upstream.
         if (failed) {
           u.errorsTotal += 1;
           recordFailure(u, now);
@@ -246,6 +261,8 @@ const gatewayStatePlugin: FastifyPluginAsync = async (app) => {
 
       const now = Date.now();
       const all = svc.urls.map((url) => getUpstream(service, url));
+      // Prefer healthy upstreams; if all are in an open-circuit state, fall back to the full pool
+      // to avoid total outage (useful for recovery scenarios and demos).
       const healthy = all.filter((u) => !isCircuitOpen(u, now));
       const pool = healthy.length > 0 ? healthy : all;
 

@@ -1,3 +1,11 @@
+/**
+ * WebSocket bridge route.
+ *
+ * Bridges an incoming client WS to an upstream WS endpoint and applies:
+ * - auth (when enabled)
+ * - request tracing (`x-request-id` forwarded on the upstream handshake)
+ * - buffering + backpressure guards to avoid unbounded memory growth
+ */
 import type { FastifyPluginAsync } from 'fastify';
 import websocket from '@fastify/websocket';
 import WebSocket from 'ws';
@@ -33,6 +41,7 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
       const upstream = new WebSocket(target.toString(), {
         headers: {
           ...(typeof req.headers.authorization === 'string' ? { authorization: req.headers.authorization } : {}),
+          // Useful for correlating WS handshake and subsequent traffic with upstream logs.
           ...(typeof req.id === 'string' ? { 'x-request-id': req.id } : {})
         }
       });
@@ -72,6 +81,9 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
 
       const pending: WebSocket.RawData[] = [];
       let pendingBytes = 0;
+
+      // Buffer client messages until the upstream is open (so early client messages aren't lost).
+      // We cap buffered bytes to prevent unbounded memory usage under slow upstreams.
 
       const flushPending = () => {
         if (upstream.readyState !== WebSocket.OPEN) return;

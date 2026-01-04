@@ -1,3 +1,10 @@
+/**
+ * HTTP proxy routes.
+ *
+ * - Routes to `/api/:service/*`
+ * - Picks an upstream via `gatewayState` (least-load + latency-aware)
+ * - Optionally caches safe GET responses (only when there is no user context)
+ */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { createResponseCache } from '../lib/cache.js';
 import { proxyHttp } from '../lib/httpProxy.js';
@@ -29,6 +36,8 @@ const proxyRoutes: FastifyPluginAsync = async (app) => {
 
       const hasUserContext =
         typeof req.headers.authorization === 'string' || typeof req.headers.cookie === 'string';
+
+      // Do not cache requests that may be user-specific.
 
       const cacheKey =
         cache && req.method === 'GET' && !hasUserContext ? `${service}:${target.toString()}` : null;

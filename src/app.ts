@@ -1,3 +1,11 @@
+/**
+ * Fastify application factory.
+ *
+ * Responsibilities:
+ * - Configure request ID generation/propagation (`x-request-id`)
+ * - Register core plugins (metrics, rate limiting, auth, gateway runtime state)
+ * - Register gateway routes (health/admin/proxy/ws/sse)
+ */
 import Fastify from 'fastify';
 import { randomUUID } from 'node:crypto';
 import sensible from '@fastify/sensible';
@@ -19,6 +27,7 @@ export function buildApp(config: Config) {
       level: config.logLevel
     },
     genReqId: (req) => {
+      // Preserve an incoming request id (if present) so tracing can be correlated across hops.
       const incoming = req.headers['x-request-id'];
       const requestId = Array.isArray(incoming) ? incoming[0] : incoming;
       if (typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128) {
@@ -30,10 +39,12 @@ export function buildApp(config: Config) {
 
   app.decorate('config', config);
 
-  // Accept any content-type without parsing (proxy raw bytes)
+  // This gateway forwards payloads to upstreams. Parsing/validating arbitrary content-types would
+  // cause avoidable 415 errors and extra overhead.
   app.addContentTypeParser('*', { parseAs: 'buffer' }, (req, body, done) => done(null, body));
 
   app.addHook('onRequest', async (req, reply) => {
+    // Make request IDs visible to callers (and easy to correlate with upstream logs).
     if (typeof req.id === 'string') {
       reply.header('x-request-id', req.id);
     }

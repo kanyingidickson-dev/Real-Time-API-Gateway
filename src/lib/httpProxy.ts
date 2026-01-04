@@ -1,3 +1,11 @@
+/**
+ * Low-level HTTP proxy helper.
+ *
+ * - Forwards method/headers/body to an upstream URL using `fetch`
+ * - Propagates `x-request-id` and standard `x-forwarded-*` headers
+ * - Streams upstream responses back to the client (including SSE)
+ * - Optionally buffers small GET responses so higher layers can cache safely
+ */
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
@@ -34,10 +42,12 @@ function appendForwardedHeaders(
 ): Record<string, string> {
   const out: Record<string, string> = { ...headers };
 
+  // Request tracing: ensure an ID exists on the upstream hop.
   if (!out['x-request-id'] && !out['X-Request-Id'] && typeof req.id === 'string') {
     out['x-request-id'] = req.id;
   }
 
+  // Standard forwarding headers (the gateway is commonly deployed behind another proxy as well).
   const remote = req.ip ?? req.socket.remoteAddress ?? '';
   const prevFor = out['x-forwarded-for'] ?? out['X-Forwarded-For'];
   if (remote) {
@@ -154,6 +164,8 @@ export async function proxyHttp(
       !cacheControl.toLowerCase().includes('no-store') &&
       !cacheControl.toLowerCase().includes('private');
 
+    // Caching is intentionally conservative: only buffer responses with a known (and small)
+    // content-length to avoid unbounded memory growth.
     if (canBufferForCache) {
       const buf = Buffer.from(await upstreamRes.arrayBuffer());
       reply.code(upstreamRes.status);
@@ -172,6 +184,7 @@ export async function proxyHttp(
       };
     }
 
+    // Streaming path: we hijack the Fastify reply and pipe bytes directly to the raw socket.
     reply.hijack();
     reply.raw.statusCode = upstreamRes.status;
     applyResponseHeaders(

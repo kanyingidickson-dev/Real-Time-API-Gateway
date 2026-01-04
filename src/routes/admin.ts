@@ -1,3 +1,11 @@
+/**
+ * Admin routes.
+ *
+ * - `GET /admin` serves a single static HTML dashboard (no build step)
+ * - `GET /admin/stats` returns a runtime snapshot used by the dashboard
+ *
+ * Security note: these endpoints are protected by JWT when `AUTH_REQUIRED=true`.
+ */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 
 const dashboardHtml = `<!DOCTYPE html>

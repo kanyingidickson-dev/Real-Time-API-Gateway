@@ -1,3 +1,12 @@
+/**
+ * Auth plugin.
+ *
+ * Auth is optional for demo/development convenience:
+ * - When `AUTH_REQUIRED=true`, requests without a valid JWT are rejected.
+ * - When `AUTH_REQUIRED=false`, `authenticate()` becomes a no-op.
+ *
+ * In production, `AUTH_REQUIRED` defaults to true (see config loader).
+ */
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fastifyJwt from '@fastify/jwt';

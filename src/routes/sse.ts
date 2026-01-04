@@ -1,3 +1,9 @@
+/**
+ * SSE proxy routes.
+ *
+ * SSE responses are typically long-lived, so we track inflight connections and route using
+ * `gatewayState` to avoid piling onto a single upstream.
+ */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { proxyHttp } from '../lib/httpProxy.js';
 
